@@ -1,0 +1,48 @@
+name: "Default Auto COP SOP"
+version: "1.0"
+description: "Standard operating procedure for automated map annotation"
+
+classes:
+  - name: "bridge"
+    description: "Bridge structures and crossings"
+    color: "#e74c3c"
+    min_confidence: 0.7
+    rules:
+      - "Must be over water or significant gap"
+      - "Minimum length of 10 meters"
+      
+  - name: "helipad"
+    description: "Helicopter landing zones and pads"
+    color: "#2ecc71"
+    min_confidence: 0.8
+    rules:
+      - "Must be flat surface"
+      - "Minimum 20x20 meter area"
+      - "Clear of obstacles"
+      
+  - name: "building"
+    description: "Building structures and facilities"
+    color: "#3498db"
+    min_confidence: 0.6
+    rules:
+      - "Must have defined boundaries"
+      - "Minimum 5x5 meter footprint"
+      
+  - name: "vehicle"
+    description: "Vehicle detections (cars, trucks, etc.)"
+    color: "#f39c12"
+    min_confidence: 0.5
+    rules:
+      - "Must be on road or accessible surface"
+      - "Maximum 50 meter length"
+
+validation_rules:
+  - "All detections must have confidence >= min_confidence for their class"
+  - "Geometry must be valid GeoJSON"
+  - "Coordinates must be in WGS84 (EPSG:4326)"
+  - "Polygon coordinates must be closed (first == last)"
+
+output_format:
+  type: "GeoJSON FeatureCollection"
+  coordinate_system: "WGS84"
+  precision: 6

@@ -1,0 +1,270 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Auto COP - Image Annotation</title>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            overflow: hidden;
+        }
+        .header {
+            background: #2c3e50;
+            color: white;
+            padding: 20px;
+            text-align: center;
+        }
+        .content {
+            display: flex;
+            height: 600px;
+        }
+        .upload-panel {
+            width: 300px;
+            padding: 20px;
+            border-right: 1px solid #ddd;
+            background: #f8f9fa;
+        }
+        .map-panel {
+            flex: 1;
+            position: relative;
+        }
+        #map {
+            height: 100%;
+            width: 100%;
+        }
+        .upload-form {
+            margin-bottom: 20px;
+        }
+        .form-group {
+            margin-bottom: 15px;
+        }
+        label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: bold;
+        }
+        input[type="file"], textarea {
+            width: 100%;
+            padding: 8px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            box-sizing: border-box;
+        }
+        textarea {
+            height: 100px;
+            resize: vertical;
+        }
+        button {
+            background: #3498db;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 4px;
+            cursor: pointer;
+            width: 100%;
+        }
+        button:hover {
+            background: #2980b9;
+        }
+        button:disabled {
+            background: #bdc3c7;
+            cursor: not-allowed;
+        }
+        .status {
+            margin-top: 10px;
+            padding: 10px;
+            border-radius: 4px;
+            display: none;
+        }
+        .status.success {
+            background: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+        .status.error {
+            background: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+        .loading {
+            text-align: center;
+            color: #666;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>Auto COP - Image Annotation</h1>
+            <p>Upload an image and SOP template to generate map annotations</p>
+        </div>
+        
+        <div class="content">
+            <div class="upload-panel">
+                <form id="uploadForm" class="upload-form">
+                    <div class="form-group">
+                        <label for="imageFile">Select Image:</label>
+                        <input type="file" id="imageFile" accept="image/*" required>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="sopYaml">SOP Template (YAML):</label>
+                        <textarea id="sopYaml" placeholder="Paste your SOP YAML here..." required></textarea>
+                    </div>
+                    
+                    <button type="submit" id="submitBtn">Annotate Image</button>
+                </form>
+                
+                <div id="status" class="status"></div>
+            </div>
+            
+            <div class="map-panel">
+                <div id="map"></div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script>
+        // Initialize map
+        const map = L.map('map').setView([37.7749, -122.4194], 13);
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            attribution: '© OpenStreetMap contributors'
+        }).addTo(map);
+
+        // Detection layer
+        let detectionLayer = L.layerGroup().addTo(map);
+
+        // Form submission
+        document.getElementById('uploadForm').addEventListener('submit', async function(e) {
+            e.preventDefault();
+            
+            const submitBtn = document.getElementById('submitBtn');
+            const status = document.getElementById('status');
+            const imageFile = document.getElementById('imageFile').files[0];
+            const sopYaml = document.getElementById('sopYaml').value;
+
+            if (!imageFile || !sopYaml) {
+                showStatus('Please select an image and provide SOP YAML', 'error');
+                return;
+            }
+
+            // Show loading state
+            submitBtn.disabled = true;
+            submitBtn.textContent = 'Processing...';
+            status.style.display = 'none';
+
+            try {
+                const formData = new FormData();
+                formData.append('image', imageFile);
+                formData.append('sop_yaml', sopYaml);
+
+                const response = await fetch('http://localhost:8000/api/annotate', {
+                    method: 'POST',
+                    body: formData
+                });
+
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+
+                const result = await response.json();
+                
+                // Clear previous detections
+                detectionLayer.clearLayers();
+                
+                // Add new detections to map
+                if (result.features && result.features.length > 0) {
+                    result.features.forEach(feature => {
+                        const coords = feature.geometry.coordinates;
+                        const props = feature.properties;
+                        
+                        if (feature.geometry.type === 'Polygon') {
+                            // Convert GeoJSON coordinates to Leaflet format
+                            const latLngs = coords[0].map(coord => [coord[1], coord[0]]);
+                            const polygon = L.polygon(latLngs, {
+                                color: getClassColor(props.class),
+                                fillColor: getClassColor(props.class),
+                                fillOpacity: 0.3,
+                                weight: 2
+                            }).bindPopup(`
+                                <strong>${props.class}</strong><br>
+                                Confidence: ${(props.confidence * 100).toFixed(1)}%<br>
+                                ${props.description || ''}
+                            `);
+                            detectionLayer.addLayer(polygon);
+                        }
+                    });
+                    
+                    // Fit map to show all detections
+                    if (detectionLayer.getLayers().length > 0) {
+                        const group = new L.featureGroup(detectionLayer.getLayers());
+                        map.fitBounds(group.getBounds().pad(0.1));
+                    }
+                    
+                    showStatus(`Successfully processed ${result.features.length} detections`, 'success');
+                } else {
+                    showStatus('No detections found', 'success');
+                }
+
+            } catch (error) {
+                console.error('Error:', error);
+                showStatus(`Error: ${error.message}`, 'error');
+            } finally {
+                submitBtn.disabled = false;
+                submitBtn.textContent = 'Annotate Image';
+            }
+        });
+
+        function showStatus(message, type) {
+            const status = document.getElementById('status');
+            status.textContent = message;
+            status.className = `status ${type}`;
+            status.style.display = 'block';
+        }
+
+        function getClassColor(className) {
+            const colors = {
+                'bridge': '#e74c3c',
+                'helipad': '#2ecc71',
+                'building': '#3498db',
+                'vehicle': '#f39c12'
+            };
+            return colors[className] || '#95a5a6';
+        }
+
+        // Load default SOP template
+        document.getElementById('sopYaml').value = `name: "Default SOP"
+version: "1.0"
+classes:
+  - name: "bridge"
+    description: "Bridge structures"
+    color: "#e74c3c"
+    min_confidence: 0.7
+  - name: "helipad"
+    description: "Helicopter landing zones"
+    color: "#2ecc71"
+    min_confidence: 0.8
+  - name: "building"
+    description: "Building structures"
+    color: "#3498db"
+    min_confidence: 0.6
+  - name: "vehicle"
+    description: "Vehicle detections"
+    color: "#f39c12"
+    min_confidence: 0.5`;
+    </script>
+</body>
+</html>

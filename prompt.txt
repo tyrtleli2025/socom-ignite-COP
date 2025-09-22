@@ -1,0 +1,44 @@
+You are creating a new Python + FastAPI + Leaflet project called "Auto COP".
+Goal: automate SOP-compliant map annotations from imagery.
+
+Create this repo layout and minimal files with runnable stubs:
+
+cop/
+  backend/
+    app.py
+    models.py
+    vision/pipeline.py
+    schemas/detection_input.schema.json
+    schemas/sop_output.schema.json
+    sop_loader.py
+  frontend/
+    index.html
+  sop/
+    sop_template.yaml
+  tests/
+    test_api_smoke.py
+  requirements.txt
+  README.md
+
+Constraints:
+- Python 3.11
+- FastAPI + Uvicorn
+- pydantic v2
+- shapely, rasterio (pin; but backend can run without rasterio for now), geopandas optional
+- jsonschema for validating payloads
+- Frontend uses plain Leaflet (ES6 module, no build tools)
+
+Implement:
+- backend/app.py: FastAPI with two routes:
+  * POST /api/annotate accepts multipart-form: image file (bytes), sop_yaml (text). Calls vision/pipeline.py:dummy_detector_geojson, then returns GeoJSON FeatureCollection after SOP validation (for now, just pass-through).
+  * GET /health returns {"ok": true}
+- backend/models.py: Pydantic models mirroring JSON schemas.
+- backend/vision/pipeline.py: stub returns two fake detections (bridge + helipad), deterministic UUID seeds for test.
+- backend/sop_loader.py: loads YAML, basic schema checks (ontology/classes present).
+- schemas: placeholders that match the models (keep simple; we’ll refine later).
+- frontend/index.html: simple file upload form -> calls /api/annotate -> renders GeoJSON overlay on Leaflet map.
+- tests/test_api_smoke.py: starts FastAPI TestClient, posts a tiny dummy image and the SOP template, asserts 200 and non-empty features.
+- requirements.txt with exact pins.
+- README with “How to run” (uvicorn command) and “How to dev test”.
+
+Do NOT overbuild; keep everything minimal but runnable. Add small docstrings. Provide complete code in one patch.
